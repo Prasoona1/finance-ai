@@ -10,7 +10,7 @@ import json
 import os
 
 # Configure Gemini API
-genai.configure(api_key='YOUR_GEMINI_API_KEY')
+genai.configure(api_key='AIzaSyBWeq2u8f-kwEVhmTFnDsGr9jza3tSmB1s')
 model = genai.GenerativeModel('gemini-pro')
 
 # Set page config
