@@ -38,6 +38,27 @@ st.markdown("""
         color: #666;
         font-style: italic;
     }
+    .chat-message {
+        padding: 10px;
+        border-radius: 10px;
+        margin: 5px 0;
+        display: flex;
+        align-items: center;
+    }
+    .chat-message.user {
+        background-color: #e3f2fd;
+        margin-left: 20%;
+    }
+    .chat-message.advisor {
+        background-color: #f5f5f5;
+        margin-right: 20%;
+    }
+    .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -66,7 +87,7 @@ class WebScraper:
             return [{'title': f'Error fetching news: {str(e)}', 'link': ''}]
 
 class FinancialChatbot:
-    def __init__(self, model):  # Fixed from _init_ to __init__
+    def __init__(self, model):
         self.model = model
         self.context = """You are a knowledgeable financial advisor. Provide clear, step-by-step guidance 
         on investing and financial planning. Always include disclaimers about financial risks. Focus on 
@@ -79,11 +100,6 @@ class FinancialChatbot:
             return response.text
         except Exception as e:
             return f"I apologize, but I encountered an error: {str(e)}"
-
-
-      
-        
-        return data
 
 class StockAnalyzer:
     def __init__(self):
@@ -177,6 +193,7 @@ class StockAnalyzer:
         )
 
         return fig
+
 def main():
     st.title("AI Financial Assistant 💰")
     
@@ -224,9 +241,9 @@ def main():
             # Display chat history
             for role, message in st.session_state.chat_history:
                 if role == "You":
-                    st.markdown(f"*You:* {message}")
+                    st.markdown(f"<div class='chat-message user'><img src='https://img.icons8.com/color/48/000000/user-male-circle--v1.png' class='avatar'><b>You:</b> {message}</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"*Advisor:* {message}")
+                    st.markdown(f"<div class='chat-message advisor'><img src='https://img.icons8.com/color/48/000000/artificial-intelligence.png' class='avatar'><b>Advisor:</b> {message}</div>", unsafe_allow_html=True)
             
             st.markdown("""
                 <div class='disclaimer'>
@@ -240,10 +257,11 @@ def main():
             st.header("Stock Analysis Dashboard")
             
             symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):", key="symbol_input")
+            period = st.selectbox("Select Period", ['1mo', '3mo', '6mo', '1y', '2y', '5y', '10y'], key="period_select")
             
             if symbol:
                 # Get stock data
-                data, info = analyzer.get_stock_data(symbol)
+                data, info = analyzer.get_stock_data(symbol, period)
                 
                 if data is not None:
                     # Technical analysis
@@ -254,7 +272,7 @@ def main():
                     st.plotly_chart(fig, use_container_width=True)
                     
                     # Display key statistics
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("Current Price", f"${data['Close'][-1]:.2f}")
                     with col2:
@@ -262,10 +280,14 @@ def main():
                     with col3:
                         daily_return = ((data['Close'][-1] - data['Close'][-2]) / data['Close'][-2]) * 100
                         st.metric("Daily Return", f"{daily_return:.2f}%")
+                    with col4:
+                        st.metric("Volume", f"{data['Volume'][-1]:,}")
                     
                     # News section
                     st.subheader("Recent News")
-                    news_items = analyzer.scraper.get_news(f"{symbol} stock")
+                    if st.button("Refresh News", key="refresh_news"):
+                        st.session_state.news_items = analyzer.scraper.get_news(f"{symbol} stock")
+                    news_items = st.session_state.get('news_items', analyzer.scraper.get_news(f"{symbol} stock"))
                     for item in news_items:
                         st.markdown(f"* {item['title']}")
                     
@@ -292,5 +314,5 @@ def main():
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
 
-if __name__ == "__main__":  # Fixed from _main_ to __main__
+if __name__ == "__main__":
     main()
