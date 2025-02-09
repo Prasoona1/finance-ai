@@ -113,45 +113,61 @@ class StockAnalyzer:
         return 100 - (100 / (1 + rs))
 
     def plot_stock_data(self, data, symbol):
-        if data is None:
+        if data is None or data.empty:
             return None
 
         fig = go.Figure()
-        
-        # Candlestick chart
-        fig.add_trace(go.Candlestick(
-            x=data.index,
-            open=data['Open'],
-            high=data['High'],
-            low=data['Low'],
-            close=data['Close'],
-            name='OHLC'
-        ))
-        
-        # Add SMAs
-        fig.add_trace(go.Scatter(
-            x=data.index,
-            y=data['SMA20'],
-            name='SMA20',
-            line=dict(color='orange')
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=data.index,
-            y=data['SMA50'],
-            name='SMA50',
-            line=dict(color='blue')
-        ))
-        
+        # Add candlestick
+        fig.add_trace(
+            go.Candlestick(
+                x=data.index,
+                open=data['Open'],
+                high=data['High'],
+                low=data['Low'],
+                close=data['Close'],
+                name='OHLC'
+            )
+        )
+
+        # Add Moving averages
+        if 'SMA20' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['SMA20'],
+                    name='20-day SMA',
+                    line=dict(color='orange', width=1)
+                )
+            )
+
+        if 'SMA50' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['SMA50'],
+                    name='50-day SMA',
+                    line=dict(color='blue', width=1)
+                )
+            )
+
+        # Update layout
         fig.update_layout(
             title=f'{symbol} Stock Price Analysis',
             yaxis_title='Price',
             xaxis_title='Date',
-            template='plotly_dark'
+            template='plotly_dark',
+            xaxis_rangeslider_visible=False,  # Disable rangeslider
+            height=600,  # Set height
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01
+            )
         )
-        
-        return fig
 
+        return fig
 def main():
     st.title("AI Financial Assistant 💰")
     
