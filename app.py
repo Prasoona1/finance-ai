@@ -10,80 +10,128 @@ import json
 import os
 
 # Configure Gemini API
-genai.configure(api_key='AIzaSyDfgOLS8K9F7pQgUZtz_6rNa-qu_LKzLls')
+genai.configure(api_key='YOUR_GEMINI_API_KEY')
 model = genai.GenerativeModel('gemini-pro')
 
 # Set page config
 st.set_page_config(
-    page_title="AI Financial Assistant",
-    page_icon="💰",
+    page_title="Wealth Dashboard 💰",
+    page_icon="💎",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Enhanced Custom CSS
 st.markdown("""
     <style>
-    .big-button {
-        font-size: 24px;
-        padding: 20px;
-        text-align: center;
-        border-radius: 10px;
-        margin: 10px;
-        background-color: #1E88E5;
+    .main {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+    .stButton>button {
+        background-color: #2e7d32;
         color: white;
+        border-radius: 10px;
+        padding: 0.5rem 1rem;
+        font-weight: bold;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #1b5e20;
+        transform: translateY(-2px);
+    }
+    .metric-card {
+        background-color: #1e1e1e;
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid #333;
+        margin: 0.5rem 0;
+    }
+    .portfolio-card {
+        background-color: #1e1e1e;
+        padding: 1.5rem;
+        border-radius: 15px;
+        border: 1px solid #2e7d32;
+        margin: 1rem 0;
+    }
+    .big-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #4caf50;
+    }
+    .section-title {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        color: #81c784;
     }
     .disclaimer {
         font-size: 12px;
         color: #666;
         font-style: italic;
+        padding: 10px;
+        border-left: 3px solid #2e7d32;
+        margin-top: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-class WebScraper:
+class Portfolio:
     def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        if 'portfolio' not in st.session_state:
+            st.session_state.portfolio = []
+        
+    def add_position(self, symbol, shares, purchase_price):
+        position = {
+            'symbol': symbol,
+            'shares': shares,
+            'purchase_price': purchase_price,
+            'date_added': datetime.now().strftime('%Y-%m-%d')
         }
-
-    def get_news(self, query, num_articles=5):
-        try:
-            url = f"https://www.google.com/search?q={query}+stock+news&tbm=nws"
-            response = requests.get(url, headers=self.headers)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            news_items = []
+        st.session_state.portfolio.append(position)
+    
+    def remove_position(self, index):
+        st.session_state.portfolio.pop(index)
+    
+    def get_portfolio_value(self):
+        total_value = 0
+        for position in st.session_state.portfolio:
+            stock = yf.Ticker(position['symbol'])
+            current_price = stock.history(period='1d')['Close'].iloc[-1]
+            value = current_price * position['shares']
+            total_value += value
+        return total_value
+    
+    def get_portfolio_performance(self):
+        performance_data = []
+        total_gain_loss = 0
+        
+        for position in st.session_state.portfolio:
+            stock = yf.Ticker(position['symbol'])
+            current_price = stock.history(period='1d')['Close'].iloc[-1]
+            cost_basis = position['purchase_price'] * position['shares']
+            current_value = current_price * position['shares']
+            gain_loss = current_value - cost_basis
+            gain_loss_percent = (gain_loss / cost_basis) * 100 if cost_basis != 0 else 0
             
-            for g in soup.find_all('div', class_='g')[:num_articles]:
-                title = g.find('h3', class_='r')
-                if title:
-                    news_items.append({
-                        'title': title.text,
-                        'link': g.find('a')['href'] if g.find('a') else ''
-                    })
-            return news_items
-        except Exception as e:
-            return [{'title': f'Error fetching news: {str(e)}', 'link': ''}]
-
-class FinancialChatbot:
-    def __init__(self, model):  # Fixed from _init_ to __init__
-        self.model = model
-        self.context = """You are a knowledgeable financial advisor. Provide clear, step-by-step guidance 
-        on investing and financial planning. Always include disclaimers about financial risks. Focus on 
-        educational content and avoid making specific investment recommendations."""
-
-    def get_response(self, user_input):
-        try:
-            prompt = f"{self.context}\nUser: {user_input}\nAdvisor:"
-            response = self.model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            return f"I apologize, but I encountered an error: {str(e)}"
+            performance_data.append({
+                'symbol': position['symbol'],
+                'shares': position['shares'],
+                'current_price': current_price,
+                'cost_basis': cost_basis,
+                'current_value': current_value,
+                'gain_loss': gain_loss,
+                'gain_loss_percent': gain_loss_percent
+            })
+            
+            total_gain_loss += gain_loss
+            
+        return performance_data, total_gain_loss
 
 class StockAnalyzer:
-    def __init__(self):  # Fixed from _init_ to __init__
+    def __init__(self):
         self.scraper = WebScraper()
-        self.model = model  # Added missing model attribute
 
     def get_stock_data(self, symbol, period='1y'):
         try:
@@ -97,10 +145,11 @@ class StockAnalyzer:
         if data is None or len(data) < 50:
             return None
 
-        # Calculate technical indicators
         data['SMA20'] = data['Close'].rolling(window=20).mean()
         data['SMA50'] = data['Close'].rolling(window=50).mean()
         data['RSI'] = self.calculate_rsi(data['Close'])
+        data['MACD'] = self.calculate_macd(data['Close'])
+        data['Signal'] = self.calculate_macd_signal(data['MACD'])
         
         return data
 
@@ -111,6 +160,16 @@ class StockAnalyzer:
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
         rs = gain / loss
         return 100 - (100 / (1 + rs))
+
+    @staticmethod
+    def calculate_macd(prices, slow=26, fast=12):
+        exp1 = prices.ewm(span=fast, adjust=False).mean()
+        exp2 = prices.ewm(span=slow, adjust=False).mean()
+        return exp1 - exp2
+
+    @staticmethod
+    def calculate_macd_signal(macd, signal_period=9):
+        return macd.ewm(span=signal_period, adjust=False).mean()
 
     def plot_stock_data(self, data, symbol):
         if data is None:
@@ -128,144 +187,170 @@ class StockAnalyzer:
             name='OHLC'
         ))
         
-        # Add SMAs
+        # Add technical indicators
         fig.add_trace(go.Scatter(
             x=data.index,
             y=data['SMA20'],
             name='SMA20',
-            line=dict(color='orange')
+            line=dict(color='orange', width=1)
         ))
         
         fig.add_trace(go.Scatter(
             x=data.index,
             y=data['SMA50'],
             name='SMA50',
-            line=dict(color='blue')
+            line=dict(color='blue', width=1)
         ))
         
+        # Update layout
         fig.update_layout(
-            title=f'{symbol} Stock Price Analysis',
+            title=f'{symbol} Stock Analysis',
             yaxis_title='Price',
             xaxis_title='Date',
-            template='plotly_dark'
+            template='plotly_dark',
+            height=600,
+            margin=dict(l=50, r=50, t=100, b=50),
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01
+            ),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
         )
         
         return fig
 
 def main():
-    st.title("AI Financial Assistant 💰")
+    st.title("💎 Wealth Dashboard")
     
-    try:
-        # Initialize components
-        chatbot = FinancialChatbot(model)
-        analyzer = StockAnalyzer()
+    # Initialize components
+    portfolio = Portfolio()
+    analyzer = StockAnalyzer()
+    
+    # Sidebar for navigation
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio("Go to", ["Portfolio Dashboard", "Stock Analysis", "Market News"])
+    
+    if page == "Portfolio Dashboard":
+        st.header("Portfolio Management")
         
-        # Main menu
-        st.markdown("""
-            <div style='text-align: center;'>
-                <h2>Choose Your Financial Journey</h2>
-            </div>
-        """, unsafe_allow_html=True)
+        # Add new position form
+        with st.expander("Add New Position"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_symbol = st.text_input("Stock Symbol")
+            with col2:
+                shares = st.number_input("Number of Shares", min_value=0.0)
+            with col3:
+                purchase_price = st.number_input("Purchase Price", min_value=0.0)
+            
+            if st.button("Add Position"):
+                portfolio.add_position(new_symbol, shares, purchase_price)
+                st.success(f"Added {shares} shares of {new_symbol}")
         
-        col1, col2 = st.columns(2)
+        # Portfolio Summary
+        st.subheader("Portfolio Summary")
+        total_value = portfolio.get_portfolio_value()
+        performance_data, total_gain_loss = portfolio.get_portfolio_performance()
         
+        # Portfolio Metrics
+        col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("💬 Chat with Financial Advisor", key="chat_button", help="Get personalized financial advice"):
-                st.session_state.mode = "chat"
-        
+            st.metric("Total Portfolio Value", f"${total_value:,.2f}")
         with col2:
-            if st.button("📊 Stock Analysis", key="analysis_button", help="Analyze specific stocks"):
-                st.session_state.mode = "analysis"
+            st.metric("Total Gain/Loss", f"${total_gain_loss:,.2f}", 
+                     delta=f"{(total_gain_loss/total_value)*100:.1f}%" if total_value > 0 else "0%")
+        with col3:
+            st.metric("Number of Positions", len(st.session_state.portfolio))
         
-        # Initialize session state
-        if 'mode' not in st.session_state:
-            st.session_state.mode = None
-        
-        if 'chat_history' not in st.session_state:
-            st.session_state.chat_history = []
-        
-        # Chat Mode
-        if st.session_state.mode == "chat":
-            st.header("Financial Advisor Chat")
-            
-            user_input = st.text_input("Ask me anything about investing:", key="user_input")
-            
-            if st.button("Send", key="send_button"):
-                if user_input:
-                    response = chatbot.get_response(user_input)
-                    st.session_state.chat_history.append(("You", user_input))
-                    st.session_state.chat_history.append(("Advisor", response))
-            
-            # Display chat history
-            for role, message in st.session_state.chat_history:
-                if role == "You":
-                    st.markdown(f"*You:* {message}")
-                else:
-                    st.markdown(f"*Advisor:* {message}")
-            
-            st.markdown("""
-                <div class='disclaimer'>
-                    Disclaimer: This is an AI-powered financial assistant for educational purposes only. 
-                    Always consult with a qualified financial advisor before making investment decisions.
-                </div>
-            """, unsafe_allow_html=True)
-        
-        # Analysis Mode
-        elif st.session_state.mode == "analysis":
-            st.header("Stock Analysis Dashboard")
-            
-            symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):", key="symbol_input")
-            
-            if symbol:
-                # Get stock data
-                data, info = analyzer.get_stock_data(symbol)
-                
-                if data is not None:
-                    # Technical analysis
-                    data = analyzer.create_technical_analysis(data)
-                    
-                    # Plot stock data
-                    fig = analyzer.plot_stock_data(data, symbol)
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Display key statistics
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Current Price", f"${data['Close'][-1]:.2f}")
-                    with col2:
-                        st.metric("RSI", f"{data['RSI'][-1]:.2f}")
-                    with col3:
-                        daily_return = ((data['Close'][-1] - data['Close'][-2]) / data['Close'][-2]) * 100
-                        st.metric("Daily Return", f"{daily_return:.2f}%")
-                    
-                    # News section
-                    st.subheader("Recent News")
-                    news_items = analyzer.scraper.get_news(f"{symbol} stock")
-                    for item in news_items:
-                        st.markdown(f"* {item['title']}")
-                    
-                    # Analysis summary
-                    st.subheader("Technical Analysis Summary")
-                    analysis_text = model.generate_content(
-                        f"Provide a brief technical analysis summary for {symbol} stock based on: "
-                        f"Current RSI: {data['RSI'][-1]:.2f}, "
-                        f"Price vs SMA20: {data['Close'][-1] - data['SMA20'][-1]:.2f}, "
-                        f"Price vs SMA50: {data['Close'][-1] - data['SMA50'][-1]:.2f}"
-                    ).text
-                    st.write(analysis_text)
-                
-                else:
-                    st.error("Error fetching stock data. Please check the symbol and try again.")
-            
-            st.markdown("""
-                <div class='disclaimer'>
-                    Disclaimer: This analysis is for educational purposes only. Past performance does not 
-                    guarantee future results. Always do your own research and consult with a qualified 
-                    financial advisor before making investment decisions.
-                </div>
-            """, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
+        # Portfolio Positions Table
+        st.subheader("Portfolio Positions")
+        if performance_data:
+            df = pd.DataFrame(performance_data)
+            st.dataframe(df.style.format({
+                'current_price': '${:.2f}',
+                'cost_basis': '${:.2f}',
+                'current_value': '${:.2f}',
+                'gain_loss': '${:.2f}',
+                'gain_loss_percent': '{:.1f}%'
+            }))
+        else:
+            st.info("No positions in portfolio. Add some positions to get started!")
 
-if __name__ == "__main__":  # Fixed from _main_ to __main__
+    elif page == "Stock Analysis":
+        st.header("Stock Analysis")
+        
+        symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):")
+        
+        if symbol:
+            data, info = analyzer.get_stock_data(symbol)
+            
+            if data is not None:
+                # Technical analysis
+                data = analyzer.create_technical_analysis(data)
+                
+                # Stock chart
+                fig = analyzer.plot_stock_data(data, symbol)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Technical Indicators
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Current Price", f"${data['Close'][-1]:.2f}")
+                with col2:
+                    st.metric("RSI", f"{data['RSI'][-1]:.2f}")
+                with col3:
+                    st.metric("MACD", f"{data['MACD'][-1]:.2f}")
+                with col4:
+                    daily_return = ((data['Close'][-1] - data['Close'][-2]) / data['Close'][-2]) * 100
+                    st.metric("Daily Return", f"{daily_return:.2f}%")
+                
+                # Company Info
+                if info:
+                    with st.expander("Company Information"):
+                        st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                        st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+                        st.write(f"**Market Cap:** ${info.get('marketCap', 0):,.2f}")
+                        st.write(f"**52 Week High:** ${info.get('fiftyTwoWeekHigh', 0):,.2f}")
+                        st.write(f"**52 Week Low:** ${info.get('fiftyTwoWeekLow', 0):,.2f}")
+
+    elif page == "Market News":
+        st.header("Market News")
+        
+        # Market indices
+        indices = {
+            'S&P 500': '^GSPC',
+            'Dow Jones': '^DJI',
+            'NASDAQ': '^IXIC'
+        }
+        
+        col1, col2, col3 = st.columns(3)
+        for idx, (name, symbol) in enumerate(indices.items()):
+            data = yf.download(symbol, period='1d')
+            if not data.empty:
+                with [col1, col2, col3][idx]:
+                    current_price = data['Close'][-1]
+                    prev_price = data['Open'][0]
+                    change = ((current_price - prev_price) / prev_price) * 100
+                    st.metric(name, f"{current_price:,.2f}", f"{change:+.2f}%")
+        
+        # News feed
+        st.subheader("Latest Market News")
+        scraper = WebScraper()
+        news_items = scraper.get_news("stock market", num_articles=10)
+        for item in news_items:
+            st.markdown(f"* {item['title']}")
+
+    # Footer
+    st.markdown("""
+        <div class='disclaimer'>
+            Disclaimer: This dashboard is for educational purposes only. All investment decisions carry risk. 
+            Past performance does not guarantee future results. Always consult with a qualified financial advisor 
+            before making investment decisions.
+        </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
     main()
