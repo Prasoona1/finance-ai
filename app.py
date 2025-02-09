@@ -332,7 +332,119 @@ def show_portfolio(portfolio_manager):
     else:
         st.info("No positions in portfolio. Add some positions to get started!")
 
-[Previous show_stock_analysis and show_chat functions remain the same...]
+ st.title("AI Financial Assistant 💰")
+    
+    try:
+        # Initialize components
+        chatbot = FinancialChatbot(model)
+        analyzer = StockAnalyzer()
+        
+        # Main menu
+        st.markdown("""
+            <div style='text-align: center;'>
+                <h2>Choose Your Financial Journey</h2>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("💬 Chat with Financial Advisor", key="chat_button", help="Get personalized financial advice"):
+                st.session_state.mode = "chat"
+        
+        with col2:
+            if st.button("📊 Stock Analysis", key="analysis_button", help="Analyze specific stocks"):
+                st.session_state.mode = "analysis"
+        
+        # Initialize session state
+        if 'mode' not in st.session_state:
+            st.session_state.mode = None
+        
+        if 'chat_history' not in st.session_state:
+            st.session_state.chat_history = []
+        
+        # Chat Mode
+        if st.session_state.mode == "chat":
+            st.header("Financial Advisor Chat")
+            
+            user_input = st.text_input("Ask me anything about investing:", key="user_input")
+            
+            if st.button("Send", key="send_button"):
+                if user_input:
+                    response = chatbot.get_response(user_input)
+                    st.session_state.chat_history.append(("You", user_input))
+                    st.session_state.chat_history.append(("Advisor", response))
+            
+            # Display chat history
+            for role, message in st.session_state.chat_history:
+                if role == "You":
+                    st.markdown(f"You: {message}")
+                else:
+                    st.markdown(f"Advisor: {message}")
+            
+            st.markdown("""
+                <div class='disclaimer'>
+                    Disclaimer: This is an AI-powered financial assistant for educational purposes only. 
+                    Always consult with a qualified financial advisor before making investment decisions.
+                </div>
+            """, unsafe_allow_html=True)
+        
+        # Analysis Mode
+        elif st.session_state.mode == "analysis":
+            st.header("Stock Analysis Dashboard")
+            
+            symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):", key="symbol_input")
+            
+            if symbol:
+                # Get stock data
+                data, info = analyzer.get_stock_data(symbol)
+                
+                if data is not None:
+                    # Technical analysis
+                    data = analyzer.create_technical_analysis(data)
+                    
+                    # Plot stock data
+                    fig = analyzer.plot_stock_data(data, symbol)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Display key statistics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Current Price", f"${data['Close'][-1]:.2f}")
+                    with col2:
+                        st.metric("RSI", f"{data['RSI'][-1]:.2f}")
+                    with col3:
+                        daily_return = ((data['Close'][-1] - data['Close'][-2]) / data['Close'][-2]) * 100
+                        st.metric("Daily Return", f"{daily_return:.2f}%")
+                    
+                    # News section
+                    st.subheader("Recent News")
+                    news_items = analyzer.scraper.get_news(f"{symbol} stock")
+                    for item in news_items:
+                        st.markdown(f"* {item['title']}")
+                    
+                    # Analysis summary
+                    st.subheader("Technical Analysis Summary")
+                    analysis_text = model.generate_content(
+                        f"Provide a brief technical analysis summary for {symbol} stock based on: "
+                        f"Current RSI: {data['RSI'][-1]:.2f}, "
+                        f"Price vs SMA20: {data['Close'][-1] - data['SMA20'][-1]:.2f}, "
+                        f"Price vs SMA50: {data['Close'][-1] - data['SMA50'][-1]:.2f}"
+                    ).text
+                    st.write(analysis_text)
+                
+                else:
+                    st.error("Error fetching stock data. Please check the symbol and try again.")
+            
+            st.markdown("""
+                <div class='disclaimer'>
+                    Disclaimer: This analysis is for educational purposes only. Past performance does not 
+                    guarantee future results. Always do your own research and consult with a qualified 
+                    financial advisor before making investment decisions.
+                </div>
+            """, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
