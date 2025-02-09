@@ -38,27 +38,6 @@ st.markdown("""
         color: #666;
         font-style: italic;
     }
-    .chat-message {
-        padding: 10px;
-        border-radius: 10px;
-        margin: 5px 0;
-        display: flex;
-        align-items: center;
-    }
-    .chat-message.user {
-        background-color: #e3f2fd;
-        margin-left: 20%;
-    }
-    .chat-message.advisor {
-        background-color: #f5f5f5;
-        margin-right: 20%;
-    }
-    .avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        margin-right: 10px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -87,7 +66,7 @@ class WebScraper:
             return [{'title': f'Error fetching news: {str(e)}', 'link': ''}]
 
 class FinancialChatbot:
-    def __init__(self, model):
+    def __init__(self, model):  # Fixed from _init_ to __init__
         self.model = model
         self.context = """You are a knowledgeable financial advisor. Provide clear, step-by-step guidance 
         on investing and financial planning. Always include disclaimers about financial risks. Focus on 
@@ -102,16 +81,14 @@ class FinancialChatbot:
             return f"I apologize, but I encountered an error: {str(e)}"
 
 class StockAnalyzer:
-    def __init__(self):
+    def __init__(self):  # Fixed from _init_ to __init__
         self.scraper = WebScraper()
-        self.model = model
+        self.model = model  # Added missing model attribute
 
     def get_stock_data(self, symbol, period='1y'):
         try:
             stock = yf.Ticker(symbol)
             hist = stock.history(period=period)
-            if hist.empty:
-                return None, None
             return hist, stock.info
         except Exception as e:
             return None, None
@@ -136,62 +113,43 @@ class StockAnalyzer:
         return 100 - (100 / (1 + rs))
 
     def plot_stock_data(self, data, symbol):
-        if data is None or data.empty:
+        if data is None:
             return None
 
-        # Create figure with secondary y-axis
         fig = go.Figure()
-
-        # Add candlestick
-        fig.add_trace(
-            go.Candlestick(
-                x=data.index,
-                open=data['Open'],
-                high=data['High'],
-                low=data['Low'],
-                close=data['Close'],
-                name='OHLC'
-            )
-        )
-
-        # Add Moving averages
-        if 'SMA20' in data.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index,
-                    y=data['SMA20'],
-                    name='20-day SMA',
-                    line=dict(color='orange', width=1)
-                )
-            )
-
-        if 'SMA50' in data.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index,
-                    y=data['SMA50'],
-                    name='50-day SMA',
-                    line=dict(color='blue', width=1)
-                )
-            )
-
-        # Update layout
+        
+        # Candlestick chart
+        fig.add_trace(go.Candlestick(
+            x=data.index,
+            open=data['Open'],
+            high=data['High'],
+            low=data['Low'],
+            close=data['Close'],
+            name='OHLC'
+        ))
+        
+        # Add SMAs
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data['SMA20'],
+            name='SMA20',
+            line=dict(color='orange')
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data['SMA50'],
+            name='SMA50',
+            line=dict(color='blue')
+        ))
+        
         fig.update_layout(
             title=f'{symbol} Stock Price Analysis',
             yaxis_title='Price',
             xaxis_title='Date',
-            template='plotly_dark',
-            xaxis_rangeslider_visible=False,  # Disable rangeslider
-            height=600,  # Set height
-            showlegend=True,
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="left",
-                x=0.01
-            )
+            template='plotly_dark'
         )
-
+        
         return fig
 
 def main():
@@ -241,9 +199,9 @@ def main():
             # Display chat history
             for role, message in st.session_state.chat_history:
                 if role == "You":
-                    st.markdown(f"<div class='chat-message user'><img src='https://img.icons8.com/color/48/000000/user-male-circle--v1.png' class='avatar'><b>You:</b> {message}</div>", unsafe_allow_html=True)
+                    st.markdown(f"*You:* {message}")
                 else:
-                    st.markdown(f"<div class='chat-message advisor'><img src='https://img.icons8.com/color/48/000000/artificial-intelligence.png' class='avatar'><b>Advisor:</b> {message}</div>", unsafe_allow_html=True)
+                    st.markdown(f"*Advisor:* {message}")
             
             st.markdown("""
                 <div class='disclaimer'>
@@ -257,11 +215,10 @@ def main():
             st.header("Stock Analysis Dashboard")
             
             symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):", key="symbol_input")
-            period = st.selectbox("Select Period", ['1mo', '3mo', '6mo', '1y', '2y', '5y', '10y'], key="period_select")
             
             if symbol:
                 # Get stock data
-                data, info = analyzer.get_stock_data(symbol, period)
+                data, info = analyzer.get_stock_data(symbol)
                 
                 if data is not None:
                     # Technical analysis
@@ -272,7 +229,7 @@ def main():
                     st.plotly_chart(fig, use_container_width=True)
                     
                     # Display key statistics
-                    col1, col2, col3, col4 = st.columns(4)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Current Price", f"${data['Close'][-1]:.2f}")
                     with col2:
@@ -280,14 +237,10 @@ def main():
                     with col3:
                         daily_return = ((data['Close'][-1] - data['Close'][-2]) / data['Close'][-2]) * 100
                         st.metric("Daily Return", f"{daily_return:.2f}%")
-                    with col4:
-                        st.metric("Volume", f"{data['Volume'][-1]:,}")
                     
                     # News section
                     st.subheader("Recent News")
-                    if st.button("Refresh News", key="refresh_news"):
-                        st.session_state.news_items = analyzer.scraper.get_news(f"{symbol} stock")
-                    news_items = st.session_state.get('news_items', analyzer.scraper.get_news(f"{symbol} stock"))
+                    news_items = analyzer.scraper.get_news(f"{symbol} stock")
                     for item in news_items:
                         st.markdown(f"* {item['title']}")
                     
@@ -314,5 +267,5 @@ def main():
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # Fixed from _main_ to __main__
     main()
