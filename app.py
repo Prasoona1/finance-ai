@@ -82,6 +82,7 @@ class FinancialChatbot:
 
 class StockAnalyzer:
     def __init__(self):
+        self.model=model
         self.scraper = WebScraper()
 
     def get_stock_data(self, symbol, period='1y'):
