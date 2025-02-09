@@ -80,15 +80,22 @@ class FinancialChatbot:
         except Exception as e:
             return f"I apologize, but I encountered an error: {str(e)}"
 
-class StockAnalyzer:
-    def __init__(self):  # Fixed from _init_ to __init__
+
+      
+        
+        return data
+
+ class StockAnalyzer:
+    def __init__(self):
         self.scraper = WebScraper()
-        self.model = model  # Added missing model attribute
+        self.model = model
 
     def get_stock_data(self, symbol, period='1y'):
         try:
             stock = yf.Ticker(symbol)
             hist = stock.history(period=period)
+            if hist.empty:
+                return None, None
             return hist, stock.info
         except Exception as e:
             return None, None
@@ -116,7 +123,9 @@ class StockAnalyzer:
         if data is None or data.empty:
             return None
 
+        # Create figure with secondary y-axis
         fig = go.Figure()
+
         # Add candlestick
         fig.add_trace(
             go.Candlestick(
