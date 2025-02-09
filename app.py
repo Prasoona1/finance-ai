@@ -332,8 +332,7 @@ def show_portfolio(portfolio_manager):
     else:
         st.info("No positions in portfolio. Add some positions to get started!")
 
- st.title("AI Financial Assistant 💰")
-    
+
     try:
         # Initialize components
         chatbot = FinancialChatbot(model)
