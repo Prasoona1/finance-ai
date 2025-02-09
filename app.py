@@ -85,7 +85,7 @@ class FinancialChatbot:
         
         return data
 
- class StockAnalyzer:
+class StockAnalyzer:
     def __init__(self):
         self.scraper = WebScraper()
         self.model = model
