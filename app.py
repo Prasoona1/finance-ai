@@ -2,12 +2,17 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime, timedelta
 import google.generativeai as genai
 import requests
 from bs4 import BeautifulSoup
 import json
 import os
+
+# Initialize session state for portfolio
+if 'portfolio' not in st.session_state:
+    st.session_state.portfolio = []
 
 # Configure Gemini API
 genai.configure(api_key='YOUR_GEMINI_API_KEY')
@@ -21,7 +26,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Enhanced Custom CSS
+# Enhanced Custom CSS with portfolio styling
 st.markdown("""
     <style>
     .main {
@@ -66,6 +71,20 @@ st.markdown("""
         margin-bottom: 1rem;
         color: #81c784;
     }
+    .portfolio-table {
+        margin-top: 1rem;
+        border-collapse: collapse;
+        width: 100%;
+    }
+    .portfolio-table th, .portfolio-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #333;
+    }
+    .portfolio-table th {
+        background-color: #1b5e20;
+        color: white;
+    }
     .disclaimer {
         font-size: 12px;
         color: #666;
@@ -78,204 +97,175 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 class Portfolio:
-    def __init__(self):
-        if 'portfolio' not in st.session_state:
-            st.session_state.portfolio = []
-        
-    def add_position(self, symbol, shares, purchase_price):
-        position = {
-            'symbol': symbol,
-            'shares': shares,
-            'purchase_price': purchase_price,
-            'date_added': datetime.now().strftime('%Y-%m-%d')
-        }
-        st.session_state.portfolio.append(position)
-    
-    def remove_position(self, index):
-        st.session_state.portfolio.pop(index)
-    
-    def get_portfolio_value(self):
-        total_value = 0
-        for position in st.session_state.portfolio:
-            stock = yf.Ticker(position['symbol'])
-            current_price = stock.history(period='1d')['Close'].iloc[-1]
-            value = current_price * position['shares']
-            total_value += value
-        return total_value
-    
-    def get_portfolio_performance(self):
-        performance_data = []
-        total_gain_loss = 0
-        
-        for position in st.session_state.portfolio:
-            stock = yf.Ticker(position['symbol'])
-            current_price = stock.history(period='1d')['Close'].iloc[-1]
-            cost_basis = position['purchase_price'] * position['shares']
-            current_value = current_price * position['shares']
-            gain_loss = current_value - cost_basis
-            gain_loss_percent = (gain_loss / cost_basis) * 100 if cost_basis != 0 else 0
-            
-            performance_data.append({
-                'symbol': position['symbol'],
-                'shares': position['shares'],
-                'current_price': current_price,
-                'cost_basis': cost_basis,
-                'current_value': current_value,
-                'gain_loss': gain_loss,
-                'gain_loss_percent': gain_loss_percent
-            })
-            
-            total_gain_loss += gain_loss
-            
-        return performance_data, total_gain_loss
-
-class StockAnalyzer:
-    def __init__(self):
-        self.scraper = WebScraper()
-
-    def get_stock_data(self, symbol, period='1y'):
+    @staticmethod
+    def add_position(symbol, shares, purchase_price, purchase_date):
         try:
+            # Validate the stock symbol
             stock = yf.Ticker(symbol)
-            hist = stock.history(period=period)
-            return hist, stock.info
+            current_price = stock.history(period='1d')['Close'].iloc[-1]
+            
+            position = {
+                'symbol': symbol.upper(),
+                'shares': float(shares),
+                'purchase_price': float(purchase_price),
+                'purchase_date': purchase_date,
+                'current_price': current_price,
+                'market_value': current_price * float(shares),
+                'gain_loss': (current_price - float(purchase_price)) * float(shares),
+                'gain_loss_percent': ((current_price - float(purchase_price)) / float(purchase_price)) * 100
+            }
+            
+            st.session_state.portfolio.append(position)
+            return True, "Position added successfully!"
         except Exception as e:
-            return None, None
-
-    def create_technical_analysis(self, data):
-        if data is None or len(data) < 50:
-            return None
-
-        data['SMA20'] = data['Close'].rolling(window=20).mean()
-        data['SMA50'] = data['Close'].rolling(window=50).mean()
-        data['RSI'] = self.calculate_rsi(data['Close'])
-        data['MACD'] = self.calculate_macd(data['Close'])
-        data['Signal'] = self.calculate_macd_signal(data['MACD'])
-        
-        return data
+            return False, f"Error adding position: {str(e)}"
 
     @staticmethod
-    def calculate_rsi(prices, period=14):
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
+    def remove_position(index):
+        try:
+            st.session_state.portfolio.pop(index)
+            return True, "Position removed successfully!"
+        except Exception as e:
+            return False, f"Error removing position: {str(e)}"
 
     @staticmethod
-    def calculate_macd(prices, slow=26, fast=12):
-        exp1 = prices.ewm(span=fast, adjust=False).mean()
-        exp2 = prices.ewm(span=slow, adjust=False).mean()
-        return exp1 - exp2
+    def update_portfolio_prices():
+        updated_portfolio = []
+        for position in st.session_state.portfolio:
+            try:
+                stock = yf.Ticker(position['symbol'])
+                current_price = stock.history(period='1d')['Close'].iloc[-1]
+                position['current_price'] = current_price
+                position['market_value'] = current_price * position['shares']
+                position['gain_loss'] = (current_price - position['purchase_price']) * position['shares']
+                position['gain_loss_percent'] = ((current_price - position['purchase_price']) / position['purchase_price']) * 100
+                updated_portfolio.append(position)
+            except Exception as e:
+                st.error(f"Error updating {position['symbol']}: {str(e)}")
+                updated_portfolio.append(position)
+        
+        st.session_state.portfolio = updated_portfolio
 
     @staticmethod
-    def calculate_macd_signal(macd, signal_period=9):
-        return macd.ewm(span=signal_period, adjust=False).mean()
+    def get_portfolio_summary():
+        total_value = sum(position['market_value'] for position in st.session_state.portfolio)
+        total_cost = sum(position['purchase_price'] * position['shares'] for position in st.session_state.portfolio)
+        total_gain_loss = sum(position['gain_loss'] for position in st.session_state.portfolio)
+        
+        return {
+            'total_value': total_value,
+            'total_cost': total_cost,
+            'total_gain_loss': total_gain_loss,
+            'total_gain_loss_percent': (total_gain_loss / total_cost * 100) if total_cost > 0 else 0,
+            'position_count': len(st.session_state.portfolio)
+        }
 
-    def plot_stock_data(self, data, symbol):
-        if data is None:
-            return None
+    @staticmethod
+    def get_portfolio_allocation():
+        if not st.session_state.portfolio:
+            return pd.DataFrame()
+        
+        total_value = sum(position['market_value'] for position in st.session_state.portfolio)
+        allocations = [
+            {
+                'symbol': position['symbol'],
+                'allocation': (position['market_value'] / total_value * 100) if total_value > 0 else 0
+            }
+            for position in st.session_state.portfolio
+        ]
+        return pd.DataFrame(allocations)
 
-        fig = go.Figure()
-        
-        # Candlestick chart
-        fig.add_trace(go.Candlestick(
-            x=data.index,
-            open=data['Open'],
-            high=data['High'],
-            low=data['Low'],
-            close=data['Close'],
-            name='OHLC'
-        ))
-        
-        # Add technical indicators
-        fig.add_trace(go.Scatter(
-            x=data.index,
-            y=data['SMA20'],
-            name='SMA20',
-            line=dict(color='orange', width=1)
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=data.index,
-            y=data['SMA50'],
-            name='SMA50',
-            line=dict(color='blue', width=1)
-        ))
-        
-        # Update layout
-        fig.update_layout(
-            title=f'{symbol} Stock Analysis',
-            yaxis_title='Price',
-            xaxis_title='Date',
-            template='plotly_dark',
-            height=600,
-            margin=dict(l=50, r=50, t=100, b=50),
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="left",
-                x=0.01
-            ),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)'
-        )
-        
-        return fig
+def create_portfolio_pie_chart(allocations):
+    if allocations.empty:
+        return None
+    
+    fig = px.pie(
+        allocations,
+        values='allocation',
+        names='symbol',
+        title='Portfolio Allocation',
+        hole=0.3
+    )
+    fig.update_layout(
+        showlegend=True,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        title_x=0.5
+    )
+    return fig
 
 def main():
     st.title("💎 Wealth Dashboard")
     
     # Initialize components
-    portfolio = Portfolio()
     analyzer = StockAnalyzer()
     
-    # Sidebar for navigation
+    # Sidebar Navigation
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to", ["Portfolio Dashboard", "Stock Analysis", "Market News"])
+    page = st.sidebar.radio("Go to", ["Portfolio Management", "Stock Analysis", "Market Overview"])
     
-    if page == "Portfolio Dashboard":
+    if page == "Portfolio Management":
         st.header("Portfolio Management")
         
-        # Add new position form
+        # Add Position Form
         with st.expander("Add New Position"):
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                new_symbol = st.text_input("Stock Symbol")
+                symbol = st.text_input("Stock Symbol").upper()
             with col2:
-                shares = st.number_input("Number of Shares", min_value=0.0)
+                shares = st.number_input("Number of Shares", min_value=0.0, step=0.01)
             with col3:
-                purchase_price = st.number_input("Purchase Price", min_value=0.0)
+                purchase_price = st.number_input("Purchase Price ($)", min_value=0.0, step=0.01)
+            with col4:
+                purchase_date = st.date_input("Purchase Date")
             
             if st.button("Add Position"):
-                portfolio.add_position(new_symbol, shares, purchase_price)
-                st.success(f"Added {shares} shares of {new_symbol}")
+                success, message = Portfolio.add_position(symbol, shares, purchase_price, purchase_date)
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
         
         # Portfolio Summary
-        st.subheader("Portfolio Summary")
-        total_value = portfolio.get_portfolio_value()
-        performance_data, total_gain_loss = portfolio.get_portfolio_performance()
-        
-        # Portfolio Metrics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Portfolio Value", f"${total_value:,.2f}")
-        with col2:
-            st.metric("Total Gain/Loss", f"${total_gain_loss:,.2f}", 
-                     delta=f"{(total_gain_loss/total_value)*100:.1f}%" if total_value > 0 else "0%")
-        with col3:
-            st.metric("Number of Positions", len(st.session_state.portfolio))
-        
-        # Portfolio Positions Table
-        st.subheader("Portfolio Positions")
-        if performance_data:
-            df = pd.DataFrame(performance_data)
-            st.dataframe(df.style.format({
-                'current_price': '${:.2f}',
-                'cost_basis': '${:.2f}',
-                'current_value': '${:.2f}',
-                'gain_loss': '${:.2f}',
-                'gain_loss_percent': '{:.1f}%'
-            }))
+        if st.session_state.portfolio:
+            Portfolio.update_portfolio_prices()
+            summary = Portfolio.get_portfolio_summary()
+            
+            # Summary Metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Portfolio Value", f"${summary['total_value']:,.2f}")
+            with col2:
+                st.metric("Total Gain/Loss", 
+                         f"${summary['total_gain_loss']:,.2f}",
+                         f"{summary['total_gain_loss_percent']:,.2f}%")
+            with col3:
+                st.metric("Number of Positions", summary['position_count'])
+            
+            # Portfolio Allocation Chart
+            allocations = Portfolio.get_portfolio_allocation()
+            if not allocations.empty:
+                fig = create_portfolio_pie_chart(allocations)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Portfolio Positions Table
+            st.subheader("Portfolio Positions")
+            for idx, position in enumerate(st.session_state.portfolio):
+                with st.container():
+                    col1, col2, col3, col4, col5, col6 = st.columns(6)
+                    col1.write(f"**{position['symbol']}**")
+                    col2.write(f"{position['shares']} shares")
+                    col3.write(f"${position['current_price']:.2f}")
+                    col4.write(f"${position['market_value']:.2f}")
+                    col5.write(f"{position['gain_loss_percent']:.2f}%")
+                    if col6.button("Remove", key=f"remove_{idx}"):
+                        success, message = Portfolio.remove_position(idx)
+                        if success:
+                            st.success(message)
+                            st.experimental_rerun()
+                        else:
+                            st.error(message)
+                    st.divider()
         else:
             st.info("No positions in portfolio. Add some positions to get started!")
 
@@ -310,14 +300,18 @@ def main():
                 # Company Info
                 if info:
                     with st.expander("Company Information"):
-                        st.write(f"**Sector:** {info.get('sector', 'N/A')}")
-                        st.write(f"**Industry:** {info.get('industry', 'N/A')}")
-                        st.write(f"**Market Cap:** ${info.get('marketCap', 0):,.2f}")
-                        st.write(f"**52 Week High:** ${info.get('fiftyTwoWeekHigh', 0):,.2f}")
-                        st.write(f"**52 Week Low:** ${info.get('fiftyTwoWeekLow', 0):,.2f}")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                            st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+                            st.write(f"**Market Cap:** ${info.get('marketCap', 0):,.2f}")
+                        with col2:
+                            st.write(f"**52 Week High:** ${info.get('fiftyTwoWeekHigh', 0):,.2f}")
+                            st.write(f"**52 Week Low:** ${info.get('fiftyTwoWeekLow', 0):,.2f}")
+                            st.write(f"**P/E Ratio:** {info.get('trailingPE', 'N/A')}")
 
-    elif page == "Market News":
-        st.header("Market News")
+    elif page == "Market Overview":
+        st.header("Market Overview")
         
         # Market indices
         indices = {
@@ -336,7 +330,7 @@ def main():
                     change = ((current_price - prev_price) / prev_price) * 100
                     st.metric(name, f"{current_price:,.2f}", f"{change:+.2f}%")
         
-        # News feed
+        # Market News
         st.subheader("Latest Market News")
         scraper = WebScraper()
         news_items = scraper.get_news("stock market", num_articles=10)
