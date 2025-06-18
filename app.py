@@ -11,7 +11,14 @@ import os
 
 # Configure Gemini API
 genai.configure(api_key='AIzaSyD_o1EvxljYD3_rKVIFhL4KqxNyV9z7yWI')
-model = genai.GenerativeModel('gemini-pro')
+# Updated model name - try these in order of preference
+try:
+    model = genai.GenerativeModel('gemini-1.5-flash')  # Most current model
+except:
+    try:
+        model = genai.GenerativeModel('gemini-1.5-pro')  # Alternative current model
+    except:
+        model = genai.GenerativeModel('gemini-1.0-pro')  # Fallback model
 
 # Set page config
 st.set_page_config(
@@ -198,8 +205,39 @@ class StockAnalyzer:
             st.error(f"Error creating chart: {str(e)}")
             return None
 
+def test_gemini_model():
+    """Test which Gemini model is available"""
+    models_to_try = [
+        'gemini-1.5-flash',
+        'gemini-1.5-pro', 
+        'gemini-1.0-pro',
+        'gemini-pro-latest'
+    ]
+    
+    for model_name in models_to_try:
+        try:
+            test_model = genai.GenerativeModel(model_name)
+            test_response = test_model.generate_content("Hello")
+            st.success(f"✅ Successfully connected to {model_name}")
+            return test_model
+        except Exception as e:
+            st.warning(f"❌ {model_name} not available: {str(e)}")
+            continue
+    
+    st.error("❌ No Gemini models are available. Please check your API key and internet connection.")
+    return None
+
 def main():
     st.title("🤖 AI Financial Assistant 💰")
+    
+    # Test Gemini model connection
+    st.sidebar.header("🔧 System Status")
+    if st.sidebar.button("Test Gemini Connection"):
+        with st.sidebar:
+            working_model = test_gemini_model()
+            if working_model:
+                global model
+                model = working_model
     
     try:
         # Initialize components
